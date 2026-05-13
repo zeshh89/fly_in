@@ -1,66 +1,31 @@
-from typing import List, Dict, Optional
+from typing import List, Dict
+from collections import deque
+from models.core import Graph, Zone, Connection
 
 
 class ParsingError(Exception):
     """Custom exception for parsing errors"""
-    pass
 
-
-class Zone:
-    def __init__(
-        self,
-        name: str,
-        x: int,
-        y: int,
-        zone_type: str = "normal",
-        capacity: int = 1,
-        color: Optional[str] = None,
-    ) -> None:
-        self.name = name
-        self.x = x
-        self.y = y
-        self.zone_type = zone_type
-        self.capacity = capacity
-        self.color = color
-
-
-class Connection:
     def __init__(
             self,
-            zone1: Zone,
-            zone2: Zone,
-            capacity: int = 1
+            message: str,
+            line: str | None = None,
+            line_number: int | None = None
     ) -> None:
-        self.zone1 = zone1
-        self.zone2 = zone2
-        self.capacity = capacity
+        self.message = message
+        self.line = line
+        self.line_number = line_number
+        super().__init__(self.__str__())
 
+    def __str__(self) -> str:
+        result = ""
+        if self.line_number is not None:
+            result += f"Line {self.line_number}: "
 
-class Graph:
-    def __init__(self) -> None:
-        self.zones: Dict[str, Zone] = {}
-        self.connections: List[Connection] = []
-        self.start: Optional[Zone] = None
-        self.end: Optional[Zone] = None
-        self.nb_drones: Optional[int] = None
-
-    def add_zone(self, zone: Zone) -> None:
-        if zone.name in self.zones:
-            raise ParsingError(f"Duplicate zone: {zone.name}")
-        self.zones[zone.name] = zone
-
-    def get_zone(self, name: str) -> Zone:
-        if name not in self.zones:
-            raise ParsingError(f"Undefined zone: {name}")
-        return self.zones[name]
-
-    def add_connection(self, connection: Connection) -> None:
-        new_conn = {connection.zone1, connection.zone2}
-        for conn in self.connections:
-            if {conn.zone1, conn.zone2} == new_conn:
-                raise ParsingError("Duplicate connection")
-
-        self.connections.append(connection)
+        result += self.message
+        if self.line is not None:
+            result += f"\n>> {self.line})"
+        return result
 
 
 def preprocess_line(line: str) -> str:
@@ -71,18 +36,19 @@ def preprocess_line(line: str) -> str:
 
 def parse_metadata(metadata_str: str) -> Dict:
     """Parse metadata inside brackets"""
-    metadata_str = metadata_str.strip("[]")
+    metadata_str = metadata_str.strip("[]").strip()
     metadata = {}
 
     if not metadata_str:
         return metadata
 
-    parts = metadata_str.split()
+    parts = metadata_str.replace(",", " ").replace(";", " ").split()
+
     for part in parts:
         if "=" not in part:
             raise ParsingError(f"Invalid metadata: {part}")
-        key, value = part.split("=", 1)
-        metadata[key] = value
+        key, value = [x.strip() for x in part.split("=", 1)]
+        metadata[key.strip().lower()] = value.strip()
 
     return metadata
 
@@ -99,7 +65,7 @@ def parse_nb_drones(line: str, graph: Graph) -> None:
         raise ParsingError("Invalid number of drones")
 
 
-def parse_zone(line: str, graph: Graph, zone_kind: str) -> None:
+def parse_zone(line: str, graph: Graph, role: str | None = None) -> None:
     """Parse a zone definition"""
     try:
         if "[" in line:
@@ -120,30 +86,32 @@ def parse_zone(line: str, graph: Graph, zone_kind: str) -> None:
         x = int(tokens[2])
         y = int(tokens[3])
 
-        zone_type = metadata.get("type", "normal")
+
+        zone_type = metadata.get("zone", "normal")
+        zone_type = zone_type.strip().lower()
         if zone_type not in {"normal", "blocked", "restricted", "priority"}:
             raise ParsingError(f"Invalid zone type: {zone_type}")
-
         capacity = int(metadata.get("max_drones", 1))
         if capacity <= 0:
-            raise ParsingError("Invalid capacity value")
-
+            raise ParsingError("Invalid zone capacity")
         color = metadata.get("color")
         zone = Zone(name, x, y, zone_type, capacity, color)
         graph.add_zone(zone)
 
-        if zone_kind == "start":
+        if role == "start":
             if graph.start is not None:
-                raise ParsingError("Multiple start zones defined")
+                raise ParsingError("Multiple start_hub defined")
             graph.start = zone
-
-        elif zone_kind == "end":
+        elif role == "end":
             if graph.end is not None:
-                raise ParsingError("Multiple end zones defined")
+                raise ParsingError("Multiple end_hub defined")
             graph.end = zone
+        print("LINE:", line)
+        print("METADATA:", metadata)
+        print("TYPE:", zone_type)
 
     except ValueError:
-        raise ParsingError("Invalid numeric value in zone")
+        raise ParsingError("Invalid numeric value in zone definition")
 
 
 def parse_connection(line: str, graph: Graph) -> None:
@@ -186,6 +154,30 @@ def has_connection(zone: Zone, connections: List[Connection]) -> bool:
     return False
 
 
+def bfs_path(graph: Graph) -> bool:
+    """Check if there is a path from start to end using BFS"""
+
+    if graph.start is None or graph.end is None:
+        raise ValueError("Graph must have start and end zones defined")
+
+    queue = deque([graph.start])
+    visited = set([graph.start])
+
+    while queue:
+        current = queue.popleft()
+        if current == graph.end:
+            return True
+
+        for conn in current.neighbors:
+            neighbor = conn.get_other_zone(current)
+            if neighbor.zone_type == "blocked":
+                continue
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+    return False
+
+
 def parse_input(filepath: str) -> Graph:
     graph = Graph()
 
@@ -198,23 +190,32 @@ def parse_input(filepath: str) -> Graph:
 
             line = line.lower()
 
-            if line.startswith("nb_drones:"):
-                parse_nb_drones(line, graph)
+            try:
 
-            elif line.startswith("start_hub"):
-                parse_zone(line, graph, "start")
+                if line.startswith("nb_drones:"):
+                    parse_nb_drones(line, graph)
+                elif line.startswith("start_hub"):
+                    parse_zone(line, graph, "start")
+                elif line.startswith("end_hub"):
+                    parse_zone(line, graph, "end")
 
-            elif line.startswith("end_hub"):
-                parse_zone(line, graph, "end")
+                elif line.startswith("hub"):
+                    parse_zone(line, graph)
 
-            elif line.startswith("hub"):
-                parse_zone(line, graph, "normal")
+                elif line.startswith("connection"):
+                    parse_connection(line, graph)
 
-            elif line.startswith("connection"):
-                parse_connection(line, graph)
+                else:
+                    raise ParsingError(f"Unknown line type : {line_number}")
+            except ParsingError as e:
 
-            else:
-                raise ParsingError(f"Unknown line type : {line_number}")
+                if e.line is None:
+                    raise ParsingError(
+                        e.message,
+                        raw_line.strip(),
+                        line_number
+                    )
+                raise
 
     if graph.start is None:
         raise ParsingError("Missing start_hub")
@@ -227,12 +228,16 @@ def parse_input(filepath: str) -> Graph:
         raise ParsingError("Start_hub has not connections")
     if not has_connection(graph.end, graph.connections):
         raise ParsingError("End_hub has not connections")
+    if not bfs_path(graph):
+        raise ParsingError("No path from start to end")
+    else:
+        print("Valid graph: path exists from start to end")
 
     return graph
 
 
 def main() -> None:
-    filepath = "map1.txt"  # tu archivo de prueba
+    filepath = "map2.txt"
 
     try:
         graph = parse_input(filepath)
@@ -255,6 +260,14 @@ def main() -> None:
                 f" - {conn.zone1.name} <-> {conn.zone2.name}, "
                 f"capacity={conn.capacity}"
             )
+        print("\nNeighbors per zone:")
+        for zone in graph.zones.values():
+            neighbors = [
+                conn.get_other_zone(zone).name
+                for conn in zone.neighbors
+            ]
+
+            print(f"{zone.name} -> {neighbors}")
 
     except ParsingError as e:
         print(f"Error parsing file: {e}")
