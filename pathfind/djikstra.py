@@ -3,15 +3,22 @@ from typing import Dict, List, Optional
 from parser import Graph, Zone
 
 
-def get_zone_cost(zone: Zone) -> int:
-    """Calculates the cost of entering a zone"""
+def get_zone_cost(zone: Zone) -> float:
+
     if zone.zone_type == "blocked":
-        return float('inf')
+        return float("inf")
+
+    cost = 1.0
+
     if zone.zone_type == "restricted":
-        return 2
+        cost += 2.0
+
     if zone.zone_type == "priority":
-        return 1
-    return 1
+        cost -= 0.3
+
+    cost += 1 / max(zone.capacity, 1)
+
+    return max(cost, 0.1)
 
 
 def dijkstra(graph: Graph) -> List[Zone]:
@@ -129,7 +136,7 @@ def build_penalties(graph: Graph) -> Dict[Zone, float]:
 
     for zone in graph.zones.values():
         if zone.zone_type == "priority":
-            penalties[zone] = -0.5
+            penalties[zone] = -0.3
         else:
             penalties[zone] = 0
     return penalties
@@ -160,10 +167,16 @@ def generate_k_paths(graph: Graph, k: int = 3) -> List[List[Zone]]:
             break
         paths.append(path)
 
-        for zone in path:
+        for zone in path[1:-1]:
             if zone.zone_type == "priority":
-                penalties[zone] -= 0.2
+                penalties[zone] = max(
+                    penalties[zone] - 0.05,
+                    -0.3
+                )
             else:
-                penalties[zone] = penalties.get(zone, 0) + 5
+                penalties[zone] = (
+                    penalties.get(zone, 0)
+                    + (1 / max(zone.capacity, 1))
+                )
 
     return paths

@@ -86,7 +86,6 @@ def parse_zone(line: str, graph: Graph, role: str | None = None) -> None:
         x = int(tokens[2])
         y = int(tokens[3])
 
-
         zone_type = metadata.get("zone", "normal")
         zone_type = zone_type.strip().lower()
         if zone_type not in {"normal", "blocked", "restricted", "priority"}:

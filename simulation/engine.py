@@ -196,6 +196,12 @@ class SimulationEngine:
 
         history = []
 
+        # estado inicial
+        history.append({
+            drone.id: drone.current_zone()
+            for drone in self.drones
+        })
+
         while not self._all_finished():
 
             arrived_moves = self._update_transit()
@@ -212,18 +218,15 @@ class SimulationEngine:
                 started_moves,
                 arrived_moves
             )
-            if arrived_moves or started_moves:
-                # GUARDAR ESTADO ACTUAL
+
+            # SOLO guardar cuando cambia posición real
+            if arrived_moves:
+
                 history.append({
-                    drone.id: {
-                        "current": drone.current_zone(),
-                        "source": drone.source_zone if drone.in_transit else drone.current_zone(),
-                        "target": drone.target_zone,
-                        "in_transit": drone.in_transit,
-                        "remaining": drone.remaining_turns
-                    }
+                    drone.id: drone.current_zone()
                     for drone in self.drones
                 })
+
                 self.turn += 1
 
             for drone, _ in arrived_moves:

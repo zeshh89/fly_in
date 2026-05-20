@@ -294,8 +294,8 @@ class Renderer:
 
                 for drone in drones:
 
-                    current_zone = positions[drone.id]["current"]
-                    next_zone = next_positions[drone.id]["current"]
+                    current_zone = positions[drone.id]
+                    next_zone = next_positions[drone.id]
 
                     x1, y1 = self._to_screen(current_zone)
                     x2, y2 = self._to_screen(next_zone)
@@ -321,7 +321,7 @@ class Renderer:
 
                 for drone in drones:
 
-                    current_zone = positions[drone.id]["current"]
+                    current_zone = positions[drone.id]
 
                     x, y = self._to_screen(current_zone)
 
