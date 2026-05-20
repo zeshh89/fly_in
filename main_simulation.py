@@ -5,7 +5,7 @@ from simulation.engine import SimulationEngine
 
 
 def main() -> None:
-    filepath = "maps/map2.txt"  # cambia aquí para probar mapas
+    filepath = "maps/map1.txt"  # cambia aquí para probar mapas
 
     # 1. Parse
     graph = parse_input(filepath)

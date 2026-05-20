@@ -113,11 +113,10 @@ class Renderer:
             margin = 70
         else:
             margin = 120
-        
+
         usable_width = self.width - 2 * margin
         usable_height = self.height - 2 * margin
-        
-        
+
         is_horizontal = len(set(ys)) == 1
         is_vertical = len(set(xs)) == 1
 
@@ -130,7 +129,6 @@ class Renderer:
                 usable_width / graph_width,
                 usable_height / graph_height
             )
-
 
         self.scale = min(self.scale, 320)
 
@@ -146,7 +144,7 @@ class Renderer:
     def _parse_color(self, color: str | None):
         if not color:
             return (200, 200, 200)
-        
+
         COLORS = {
             "red": (220, 50, 50),
             "darkred": (139, 0, 0),
@@ -164,7 +162,7 @@ class Renderer:
             "rainbow": (200, 200, 200)
         }
         return COLORS.get(color.strip().lower(), (200, 200, 200))
-    
+
     def _compute_sprite_size(self) -> None:
         nb_zones = len(self.graph.zones)
 
@@ -172,7 +170,7 @@ class Renderer:
             self.zone_size = 240
             self.drone_size = 192
             return
-        
+
         if nb_zones <= 8:
             self.zone_size = 180
             self.drone_size = 144
@@ -266,50 +264,69 @@ class Renderer:
             rect = self.drone_img.get_rect(center=(int(x), int(y)))
             self.screen.blit(self.drone_img, rect)
 
-    def run(
-        self,
-        history_positions: List[List[tuple[DroneState, Zone]]],
-        drones: List[DroneState],
-    ) -> None:
+    def run(self, history_positions, drones):
+
         running = True
         turn = 0
         frames_per_turn = 60
         frame = 0
 
+        for i, positions in enumerate(history_positions):
+            print(f"TURN {i}: {positions}")
+
         while running:
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
             self.draw_background()
-
             self.draw_connections()
             self.draw_zones()
-            self.draw_turn_counter(turn)
+
+            logical_turn = min(turn, len(history_positions) - 1)
+            self.draw_turn_counter(logical_turn)
 
             if turn < len(history_positions) - 1:
-                positions_a = history_positions[turn]
-                positions_b = history_positions[turn + 1]
-                alpha = frame / frames_per_turn
-                self.draw_drones(
-                    drones,
-                    positions_a,
-                    positions_b,
-                    alpha
-                )
+
+                positions = history_positions[turn]
+                next_positions = history_positions[turn + 1]
+
+                for drone in drones:
+
+                    current_zone = positions[drone.id]["current"]
+                    next_zone = next_positions[drone.id]["current"]
+
+                    x1, y1 = self._to_screen(current_zone)
+                    x2, y2 = self._to_screen(next_zone)
+
+                    alpha = frame / frames_per_turn
+
+                    x = x1 + (x2 - x1) * alpha
+                    y = y1 + (y2 - y1) * alpha
+
+                    rect = self.drone_img.get_rect(center=(int(x), int(y)))
+                    self.screen.blit(self.drone_img, rect)
+
                 frame += 1
+
                 if frame >= frames_per_turn:
                     frame = 0
                     turn += 1
+                    print("TURN AVANZA A:", turn)
+
             else:
+
                 positions = history_positions[-1]
 
                 for drone in drones:
-                    zone = positions[drone.id]
-                    x, y = self._to_screen(zone)
-                    rect = self.drone_img.get_rect(center=(x, y))
-                    self.screen.blit(self.drone_img, rect)
 
+                    current_zone = positions[drone.id]["current"]
+
+                    x, y = self._to_screen(current_zone)
+
+                    rect = self.drone_img.get_rect(center=(int(x), int(y)))
+                    self.screen.blit(self.drone_img, rect)
             pygame.display.flip()
             self.clock.tick(80)
 

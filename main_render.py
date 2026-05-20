@@ -6,7 +6,7 @@ from visualization.renderer import Renderer
 
 
 def main():
-    graph = parse_input("maps/medium/02_circular_loop.txt")
+    graph = parse_input("maps/easy/01_linear_path.txt")
 
     paths = generate_k_paths(graph, k=3)
 

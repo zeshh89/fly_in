@@ -20,186 +20,214 @@ class SimulationEngine:
     def _all_finished(self) -> bool:
         return all(drone.finished for drone in self.drones)
 
-    def _compute_turn(self) -> List[tuple[DroneState, Zone]]:
-        moves: List[tuple[DroneState, Zone]] = []
-        future_occupancy: Dict[Zone, int] = {}
-        connection_usage: Dict[Connection, int] = {}
-        planned_moves: Dict[Zone, DroneState] = {}
-        processed: set[DroneState] = set()
+    def _zone_occupancy(self, zone: Zone) -> int:
+        count = 0
 
         for drone in self.drones:
-            if drone in processed:
-                continue
-            if drone.in_transit:
-                drone.remaining_turns -= 1
-                if drone.remaining_turns <= 0:
-                    drone.in_transit = False
-                    target = drone.target_zone
-                    drone.target_zone = None
 
-                    if target is None:
-                        processed.add(drone)
-                        continue
-                    conn = self.graph.get_connection(
-                        drone.current_zone(),
-                        target
-                    )
-                    if not self._can_move(
-                        drone,
-                        target,
-                        future_occupancy,
-                        connection_usage
-                    ):
-                        processed.add(drone)
-                        continue
-                    moves.append((drone, target))
-                    future_occupancy[target] = (
-                        future_occupancy.get(target, 0) + 1
-                    )
-                    if conn:
-                        connection_usage[conn] = (
-                            connection_usage.get(conn, 0) + 1
-                        )
-                processed.add(drone)            
+            if drone.finished:
+                continue
+
+            # drones ya estacionados
+            if not drone.in_transit:
+                if drone.current_zone() == zone:
+                    count += 1
+
+        return count
+
+    def _connection_usage(
+        self,
+        connection: Connection
+    ) -> int:
+
+        count = 0
+
+        for drone in self.drones:
+
+            if not drone.in_transit:
+                continue
+
+            if (
+                drone.source_zone == connection.zone1
+                and drone.target_zone == connection.zone2
+            ) or (
+                drone.source_zone == connection.zone2
+                and drone.target_zone == connection.zone1
+            ):
+                count += 1
+
+        return count
+
+    def _can_move(
+        self,
+        drone: DroneState,
+        next_zone: Zone
+    ) -> bool:
+
+        # END sin límite
+        if next_zone == self.graph.end:
+            return True
+
+        # capacidad HUB
+        occupancy = self._zone_occupancy(next_zone)
+
+        if occupancy >= next_zone.capacity:
+            return False
+
+        # capacidad LINK
+        conn = self.graph.get_connection(
+            drone.current_zone(),
+            next_zone
+        )
+
+        usage = self._connection_usage(conn)
+
+        if usage >= conn.capacity:
+            return False
+
+        return True
+
+    def _update_transit(self) -> List[tuple[DroneState, Zone]]:
+
+        arrived_moves = []
+
+        for drone in self.drones:
+
+            if not drone.in_transit:
+                continue
+
+            drone.remaining_turns -= 1
+
+            if drone.remaining_turns > 0:
+                continue
+
+            # llegada final
+            drone.in_transit = False
+
+            if drone.target_zone is None:
+                continue
+
+            arrived_zone = drone.target_zone
+
+            drone.position += 1
+
+            if arrived_zone.zone_type == "restricted":
+                drone.wait_turns = 1
+
+            arrived_moves.append((drone, arrived_zone))
+
+            if arrived_zone == self.graph.end:
+                drone.finished = True
+
+        return arrived_moves
+
+    def _start_new_moves(
+        self,
+        arrived_this_turn: set[DroneState]
+    ) -> List[tuple[DroneState, Zone]]:
+
+        started_moves = []
+
+        for drone in self.drones:
+            if drone in arrived_this_turn:
                 continue
 
             if drone.finished:
-                processed.add(drone)
+                continue
+
+            if drone.in_transit:
+                continue
+
+            if drone.wait_turns > 0:
+                drone.wait_turns -= 1
                 continue
 
             next_zone = drone.next_zone()
 
             if next_zone is None:
                 drone.finished = True
-                processed.add(drone)
                 continue
 
-            conn = self.graph.get_connection(
-                drone.current_zone(),
-                next_zone
-            )
-
-            if next_zone.zone_type == "restricted":
-                if not self._can_move(
-                    drone,
-                    next_zone,
-                    future_occupancy,
-                    connection_usage
-                ):
-                    processed.add(drone)               
-                    continue
-
-                if next_zone in planned_moves:
-                    processed.add(drone)
-                    continue
-                planned_moves[next_zone] = drone
-
-                drone.in_transit = True
-                drone.remaining_turns = 2
-                drone.target_zone = next_zone
-                future_occupancy[next_zone] = (
-                    future_occupancy.get(next_zone, 0) + 1
-                )
-                if conn:
-                    connection_usage[conn] = connection_usage.get(conn, 0) + 1
-
-                processed.add(drone)
+            if not self._can_move(drone, next_zone):
                 continue
 
-            if self._can_move(
-                drone,
-                next_zone,
-                future_occupancy,
-                connection_usage
-            ):
-                if next_zone in planned_moves:
-                    processed.add(drone)
-                    continue
-                planned_moves[next_zone] = drone
+            travel_time = 1
 
-                moves.append((drone, next_zone))
-                future_occupancy[next_zone] = (
-                    future_occupancy.get(next_zone, 0) + 1
-                )
-                if conn:
-                    connection_usage[conn] = connection_usage.get(conn, 0) + 1
-            processed.add(drone)
+            drone.in_transit = True
+            drone.remaining_turns = travel_time
 
-        return moves
+            drone.source_zone = drone.current_zone()
+            drone.target_zone = next_zone
 
-    def _can_move(
-            self,
-            drone: DroneState,
-            next_zone: Zone,
-            future_occupancy: Dict[Zone, int],
-            connection_usage: Dict[Connection, int]
-    ) -> bool:
+            started_moves.append((drone, next_zone))
 
-        for other in self.drones:
-            if other is drone:
-                continue
-
-            if (
-                other.current_zone() == next_zone
-                and other.next_zone() == drone.current_zone()
-            ):
-
-                if drone.id > other.id:
-                    return False
-
-        if next_zone == self.graph.end:
-            return True
-
-        current = future_occupancy.get(next_zone, 0)
-
-        if current >= next_zone.capacity:
-            return False
-
-        conn = self.graph.get_connection(
-            drone.current_zone(),
-            next_zone
-        )
-        used = connection_usage.get(conn, 0)
-        if used >= conn.capacity:
-            return False
-
-        return True
-
-    def _aply_moves(self, moves: List[tuple[DroneState, Zone]]) -> None:
-        for drone, next_zone in moves:
-            drone.position += 1
-
-            drone.in_transit = False
-            drone.target_zone = None
-            drone.remaining_turns = 0
-
-            if next_zone == self.graph.end:
-                drone.finished = True
+        return started_moves
 
     def _print_turn(
-            self,
-            moves: List[tuple[DroneState, Zone]]
+        self,
+        started_moves: List[tuple[DroneState, Zone]],
+        arrived_moves: List[tuple[DroneState, Zone]]
     ) -> None:
 
         output = []
-        for drone, zone in moves:
-            output.append(f"D{drone.id} -> {zone.name}")
+
+        for drone, zone in started_moves:
+
+            if zone.zone_type == "restricted":
+                output.append(
+                    f"D{drone.id} entering {zone.name}"
+                )
+            else:
+                output.append(
+                    f"D{drone.id} -> {zone.name}"
+                )
+
+        for drone, zone in arrived_moves:
+
+            if zone.zone_type == "restricted":
+                output.append(
+                    f"D{drone.id} arrived {zone.name}"
+                )
 
         if output:
-            print(" ".join(output))
+            print(" | ".join(output))
 
-    def run(self) -> None:
-        """Run simulation untill all drones reach teh end"""
-        history_positions = []
+    def run(self):
+
+        history = []
 
         while not self._all_finished():
-            self.turn += 1
-            moves = self._compute_turn()
-            self._aply_moves(moves)
-            self._print_turn(moves)
 
-            history_positions.append({
-                drone.id: drone.current_zone()
-                for drone in self.drones
-            })
-        return history_positions
+            arrived_moves = self._update_transit()
+
+            arrived_drones = {
+                drone for drone, _ in arrived_moves
+            }
+
+            started_moves = self._start_new_moves(
+                arrived_drones
+            )
+
+            self._print_turn(
+                started_moves,
+                arrived_moves
+            )
+            if arrived_moves or started_moves:
+                # GUARDAR ESTADO ACTUAL
+                history.append({
+                    drone.id: {
+                        "current": drone.current_zone(),
+                        "source": drone.source_zone if drone.in_transit else drone.current_zone(),
+                        "target": drone.target_zone,
+                        "in_transit": drone.in_transit,
+                        "remaining": drone.remaining_turns
+                    }
+                    for drone in self.drones
+                })
+                self.turn += 1
+
+            for drone, _ in arrived_moves:
+                drone.source_zone = None
+                drone.target_zone = None
+
+        return history

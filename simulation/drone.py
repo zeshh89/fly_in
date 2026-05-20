@@ -10,7 +10,9 @@ class DroneState:
         self.finished = False
         self.in_transit = False
         self.remaining_turns = 0
+        self.source_zone: Zone | None = None
         self.target_zone: Zone | None = None
+        self.wait_turns = 0
 
     def current_zone(self) -> Zone:
         return self.path[self.position]
