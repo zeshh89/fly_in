@@ -166,6 +166,41 @@ connection: tunnel goal
 
 ---
 
+## Usage
+
+The project uses a Makefile to manage the environment and run the simulation.
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `make` | Creates a virtual environment and installs dependencies |
+| `make run` | Runs the simulation with the default map |
+| `make run-map MAP=<path>` | Runs the simulation with a custom map file |
+| `make clean` | Removes cache files |
+| `make reset` | Deletes the virtual environment |
+
+### Examples
+
+```bash
+# Set up the environment
+make all
+
+# Run with the default map
+make run
+
+# Run with a specific map
+make run-map MAP=maps/hard/02_capacity_hell.txt
+
+# Clean cache
+make clean
+
+# Remove the virtual environment
+make reset
+```
+
+---
+
 ## Project Architecture
 
 ### Core Components

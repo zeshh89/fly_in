@@ -1,6 +1,6 @@
 import heapq
 from typing import Dict, List, Optional
-from parser import Graph, Zone
+from models.core import Graph, Zone
 
 
 def get_zone_cost(zone: Zone) -> float:

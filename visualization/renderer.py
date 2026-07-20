@@ -141,7 +141,7 @@ class Renderer:
         self.min_x = min_x
         self.min_y = min_y
 
-    def _parse_color(self, color: str | None):
+    def _parse_color(self, color: str | None) -> tuple[int, int, int]:
         if not color:
             return (200, 200, 200)
 
@@ -159,7 +159,10 @@ class Renderer:
             "white": (240, 240, 240),
             "brown": (139, 90, 43),
             "maroon": (128, 0, 0),
-            "rainbow": (200, 200, 200)
+            "rainbow": (200, 200, 200),
+            "cyan": (50, 200, 200),
+            "lime": (50, 255, 50),
+            "magenta": (255, 0, 255)
         }
         return COLORS.get(color.strip().lower(), (200, 200, 200))
 
@@ -181,7 +184,11 @@ class Renderer:
         self.zone_size = base_size
         self.drone_size = max(14, int(base_size * 0.8))
 
-    def _scale_sprite(self, sprite, size: int):
+    def _scale_sprite(
+            self,
+            sprite: pygame.Surface,
+            size: int
+    ) -> pygame.Surface:
         return pygame.transform.smoothscale(sprite, (size, size))
 
     def _to_screen(self, zone: Zone) -> tuple[int, int]:
@@ -190,7 +197,7 @@ class Renderer:
         y = self.offset_y + (zone.y - self.min_y) * self.scale
         return int(x), int(y)
 
-    def _get_zone_sprite(self, zone: Zone):
+    def _get_zone_sprite(self, zone: Zone) -> pygame.Surface:
         zone_type = zone.zone_type.strip().lower()
         if zone == self.graph.start:
             return self.start_img
@@ -264,16 +271,20 @@ class Renderer:
             rect = self.drone_img.get_rect(center=(int(x), int(y)))
             self.screen.blit(self.drone_img, rect)
 
-    def run(self, history_positions, drones):
+    def run(
+            self,
+            history_positions: List[Dict[int, Zone]],
+            drones: List[DroneState]
+    ) -> None:
 
         running = True
         turn = 0
         frames_per_turn = 60
         frame = 0
-
+        """
         for i, positions in enumerate(history_positions):
             print(f"TURN {i}: {positions}")
-
+        """
         while running:
 
             for event in pygame.event.get():
@@ -313,7 +324,7 @@ class Renderer:
                 if frame >= frames_per_turn:
                     frame = 0
                     turn += 1
-                    print("TURN AVANZA A:", turn)
+                    # print("TURN AVANZA A:", turn)
 
             else:
 

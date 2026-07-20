@@ -1,0 +1,33 @@
+# Default map: small network with branching paths
+
+nb_drones: 6
+
+# Start zone
+start_hub: start 0 0 [color=green]
+
+# Main corridor
+hub: a 1 0 [color=blue]
+hub: b 2 0 [color=blue]
+hub: c 3 0 [color=blue]
+
+# Branch path (faster but risky)
+hub: d 2 1 [color=yellow]
+hub: e 3 1 [color=yellow]
+
+# End
+end_hub: goal 4 0 [color=red]
+
+# Connections main path
+connection: start-a
+connection: a-b
+connection: b-c
+connection: c-goal
+
+# Alternative branch
+connection: b-d
+connection: d-e
+connection: e-goal
+
+# Extra constraint edge (forces decision making)
+connection: a-d [max_link_capacity=2]
+connection: c-e [max_link_capacity=1]

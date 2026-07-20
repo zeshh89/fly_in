@@ -87,6 +87,38 @@ class SimulationEngine:
 
         return True
 
+    def _capacity_snapshot(self) -> Dict:
+        hubs = {}
+
+        for zone_name in self.graph.zones:
+            zone = self.graph.get_zone(zone_name)
+
+            if zone == self.graph.start or zone == self.graph.end:
+                continue
+
+            used = self._zone_occupancy(zone)
+
+            hubs[zone.name] = {
+                "used": used,
+                "capacity": zone.capacity
+            }
+
+        links = {}
+
+        for conn in self.graph.connections:
+            used = self._connection_usage(conn)
+            key = f"{conn.zone1.name}-{conn.zone2.name}"
+
+            links[key] = {
+                "used": used,
+                "capacity": conn.capacity
+            }
+
+        return {
+            "hubs": hubs,
+            "links": links
+        }
+
     def _update_transit(self) -> List[tuple[DroneState, Zone]]:
 
         arrived_moves = []
@@ -172,29 +204,40 @@ class SimulationEngine:
         output = []
 
         for drone, zone in started_moves:
-
             if zone.zone_type == "restricted":
-                output.append(
-                    f"D{drone.id} entering {zone.name}"
-                )
+                output.append(f"D{drone.id} entering {zone.name}")
             else:
-                output.append(
-                    f"D{drone.id} -> {zone.name}"
-                )
+                output.append(f"D{drone.id} -> {zone.name}")
 
         for drone, zone in arrived_moves:
-
             if zone.zone_type == "restricted":
-                output.append(
-                    f"D{drone.id} arrived {zone.name}"
-                )
+                output.append(f"D{drone.id} arrived {zone.name}")
 
+        """
+        snapshot = self._capacity_snapshot()
+
+        hub_info = [
+            f"{name}:{data['used']}/{data['capacity']}"
+            for name, data in snapshot["hubs"].items()
+        ]
+
+        link_info = [
+            f"{name}:{data['used']}/{data['capacity']}"
+            for name, data in snapshot["links"].items()
+        ]
+
+        if hub_info:
+            output.append("HUBS[" + ", ".join(hub_info) + "]")
+
+        if link_info:
+            output.append("LINKS[" + ", ".join(link_info) + "]")
+        """
         if output:
             print(" | ".join(output))
 
-    def run(self):
+    def run(self) -> List[Dict[int, Zone]]:
 
-        history = []
+        history: List[Dict[int, Zone]] = []
 
         # estado inicial
         history.append({
@@ -219,7 +262,6 @@ class SimulationEngine:
                 arrived_moves
             )
 
-            # SOLO guardar cuando cambia posición real
             if arrived_moves:
 
                 history.append({

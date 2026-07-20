@@ -24,7 +24,7 @@ class ParsingError(Exception):
 
         result += self.message
         if self.line is not None:
-            result += f"\n>> {self.line})"
+            result += f"\n>> {self.line}"
         return result
 
 
@@ -34,10 +34,10 @@ def preprocess_line(line: str) -> str:
     return line.strip()
 
 
-def parse_metadata(metadata_str: str) -> Dict:
+def parse_metadata(metadata_str: str) -> Dict[str, str]:
     """Parse metadata inside brackets"""
     metadata_str = metadata_str.strip("[]").strip()
-    metadata = {}
+    metadata: Dict[str, str] = {}
 
     if not metadata_str:
         return metadata
@@ -62,87 +62,166 @@ def parse_nb_drones(line: str, graph: Graph) -> None:
             raise ValueError
         graph.nb_drones = nb
     except ValueError:
-        raise ParsingError("Invalid number of drones")
+        raise ParsingError("Invalid number of drones") from None
 
 
 def parse_zone(line: str, graph: Graph, role: str | None = None) -> None:
-    """Parse a zone definition"""
+
+    if "[" in line:
+        main_part, metadata_part = line.split("[", 1)
+        metadata = parse_metadata("[" + metadata_part)
+    else:
+        main_part = line
+        metadata = {}
+    allowed_metadata = {
+        "zone",
+        "max_drones",
+        "color",
+    }
+
+    for key in metadata:
+        if key not in allowed_metadata:
+            raise ParsingError(
+                f"Unknown zone metadata: {key}"
+            )
+
+    tokens = main_part.split()
+
+    if len(tokens) < 4:
+        raise ParsingError("Invalid zone format")
+
+    name = tokens[1]
+
+    if "-" in name:
+        raise ParsingError("Zone name cannot contain '-'")
+
     try:
-        if "[" in line:
-            main_part, metadata_part = line.split("[", 1)
-            metadata = parse_metadata("[" + metadata_part)
-        else:
-            main_part = line
-            metadata = {}
-
-        tokens = main_part.split()
-        if len(tokens) < 4:
-            raise ParsingError("Invalid zone format")
-
-        name = tokens[1]
-        if "-" in name:
-            raise ParsingError("Zone name cannot contain '-'")
-
         x = int(tokens[2])
         y = int(tokens[3])
-
-        zone_type = metadata.get("zone", "normal")
-        zone_type = zone_type.strip().lower()
-        if zone_type not in {"normal", "blocked", "restricted", "priority"}:
-            raise ParsingError(f"Invalid zone type: {zone_type}")
-        capacity = int(metadata.get("max_drones", 1))
-        if capacity <= 0:
-            raise ParsingError("Invalid zone capacity")
-        color = metadata.get("color")
-        zone = Zone(name, x, y, zone_type, capacity, color)
-        graph.add_zone(zone)
-
-        if role == "start":
-            if graph.start is not None:
-                raise ParsingError("Multiple start_hub defined")
-            graph.start = zone
-        elif role == "end":
-            if graph.end is not None:
-                raise ParsingError("Multiple end_hub defined")
-            graph.end = zone
-        print("LINE:", line)
-        print("METADATA:", metadata)
-        print("TYPE:", zone_type)
-
     except ValueError:
-        raise ParsingError("Invalid numeric value in zone definition")
+        raise ParsingError(
+            "Invalid numeric value in zone definition"
+        ) from None
+
+    zone_type = metadata.get("zone", "normal").strip().lower()
+
+    if zone_type not in {
+        "normal",
+        "blocked",
+        "restricted",
+        "priority"
+    }:
+        raise ParsingError(f"Invalid zone type: {zone_type}")
+
+    try:
+        capacity = int(metadata.get("max_drones", 1))
+    except ValueError:
+        raise ParsingError(
+            "Invalid zone capacity"
+        ) from None
+
+    if capacity <= 0:
+        raise ParsingError("Invalid zone capacity")
+
+    VCOLORS = {
+            "red": (220, 50, 50),
+            "darkred": (139, 0, 0),
+            "blue": (50, 120, 220),
+            "green": (50, 200, 50),
+            "purple": (160, 80, 200),
+            "orange": (255, 140, 0),
+            "yellow": (240, 220, 60),
+            "gold": (255, 200, 0),
+            "violet": (180, 80, 255),
+            "black": (30, 30, 30),
+            "white": (240, 240, 240),
+            "brown": (139, 90, 43),
+            "maroon": (128, 0, 0),
+            "rainbow": (200, 200, 200),
+            "cyan": (50, 200, 200),
+            "lime": (50, 255, 50),
+            "magenta": (255, 0, 255)
+        }
+
+    color = metadata.get("color")
+
+    if color is not None:
+        color = color.strip().lower()
+
+        if color not in VCOLORS:
+            raise ParsingError(
+                f"Invalid color: {color}"
+            )
+
+    zone = Zone(name, x, y, zone_type, capacity, color)
+
+    try:
+        graph.add_zone(zone)
+    except ValueError as e:
+        raise ParsingError(str(e)) from None
+    if role == "start":
+        if graph.start is not None:
+            raise ParsingError("Multiple start_hub defined")
+        graph.start = zone
+
+    elif role == "end":
+        if graph.end is not None:
+            raise ParsingError("Multiple end_hub defined")
+        graph.end = zone
 
 
 def parse_connection(line: str, graph: Graph) -> None:
 
+    if "[" in line:
+        main_part, metadata_part = line.split("[", 1)
+        metadata = parse_metadata("[" + metadata_part)
+    else:
+        main_part = line
+        metadata = {}
+
+    allowed = {"max_link_capacity"}
+
+    for key in metadata:
+        if key not in allowed:
+            raise ParsingError(
+                f"Unknown connection metadata: {key}"
+            )
+
+    tokens = main_part.split()
+
+    if len(tokens) != 2:
+        raise ParsingError("Invalid connection format")
+
+    names = tokens[1].split("-")
+
+    if len(names) != 2:
+        raise ParsingError("Invalid connection")
+
+    zone1 = graph.get_zone(names[0])
+    zone2 = graph.get_zone(names[1])
+
+    if zone1 is None:
+        raise ParsingError(f"Unknown zone: {names[0]}")
+
+    if zone2 is None:
+        raise ParsingError(f"Unknown zone: {names[1]}")
+
     try:
-        if "[" in line:
-            main_part, metadata_part = line.split("[", 1)
-            metadata = parse_metadata("[" + metadata_part)
-        else:
-            main_part = line
-            metadata = {}
-
-        tokens = main_part.split()
-        if len(tokens) != 2:
-            raise ParsingError("Invalid connection format")
-
-        names = tokens[1].split("-")
-        if len(names) != 2:
-            raise ParsingError("Invalid connection")
-
-        zone1 = graph.get_zone(names[0])
-        zone2 = graph.get_zone(names[1])
-
         capacity = int(metadata.get("max_link_capacity", 1))
-        if capacity <= 0:
-            raise ParsingError("Invalid connection capacity ")
-
-        connection = Connection(zone1, zone2, capacity)
-        graph.add_connection(connection)
-
     except ValueError:
-        raise ParsingError("Invalid numeric value in connection")
+        raise ParsingError(
+            "Invalid connection capacity"
+        ) from None
+
+    if capacity <= 0:
+        raise ParsingError("Invalid connection capacity")
+
+    connection = Connection(zone1, zone2, capacity)
+
+    try:
+        graph.add_connection(connection)
+    except ValueError as e:
+        raise ParsingError(str(e)) from None
 
 
 def has_connection(zone: Zone, connections: List[Connection]) -> bool:
@@ -157,7 +236,9 @@ def bfs_path(graph: Graph) -> bool:
     """Check if there is a path from start to end using BFS"""
 
     if graph.start is None or graph.end is None:
-        raise ValueError("Graph must have start and end zones defined")
+        raise ValueError(
+            "Graph must have start and end zones defined"
+        ) from None
 
     queue = deque([graph.start])
     visited = set([graph.start])
@@ -233,44 +314,3 @@ def parse_input(filepath: str) -> Graph:
         print("Valid graph: path exists from start to end")
 
     return graph
-
-
-def main() -> None:
-    filepath = "map2.txt"
-
-    try:
-        graph = parse_input(filepath)
-        print(f"Number of drones: {graph.nb_drones}")
-        print(
-            f"Start zone: {graph.start.name} "
-            f"({graph.start.x}, {graph.start.y})"
-        )
-        print(f"End zone: {graph.end.name} ({graph.end.x}, {graph.end.y})")
-        print("\nZones:")
-        for zone_name, zone in graph.zones.items():
-            print(
-                f" - {zone_name}: type={zone.zone_type},"
-                f" capacity={zone.capacity}, color={zone.color}"
-            )
-
-        print("\nConnections:")
-        for conn in graph.connections:
-            print(
-                f" - {conn.zone1.name} <-> {conn.zone2.name}, "
-                f"capacity={conn.capacity}"
-            )
-        print("\nNeighbors per zone:")
-        for zone in graph.zones.values():
-            neighbors = [
-                conn.get_other_zone(zone).name
-                for conn in zone.neighbors
-            ]
-
-            print(f"{zone.name} -> {neighbors}")
-
-    except ParsingError as e:
-        print(f"Error parsing file: {e}")
-
-
-if __name__ == "__main__":
-    main()
